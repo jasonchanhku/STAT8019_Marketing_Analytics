@@ -1,0 +1,382 @@
+---
+title: "Chapter 2"
+output: 
+  html_notebook:
+    toc: true
+---
+
+# Libraries
+
+```{r}
+library(psych)
+library(ggplot2)
+library(reshape2)
+library(magrittr)
+library(tidyr)
+library(purrr)
+library(dplyr)
+library(reshape2)
+```
+
+
+# Customer Expenses Data
+
+A survey of 24 customers on their percentages of expenditure on 9 major categories is conducted: Food X1, Transport X2, Living X3, Communication X4, Entertainment X5, Other X6, Clothing X7, Education X8 and Saving X9.
+
+## EDA
+
+```{r}
+exp_eg <- read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/data/exp_eg.csv")
+
+head(exp_eg)
+```
+
+```{r}
+describe(exp_eg[1:9], skew=FALSE, ranges=FALSE)
+```
+
+### Scatterplot Matrix
+
+```{r}
+pairs(exp_eg[1:4], pch = 19, lower.panel = NULL)
+
+```
+
+```{r}
+pairs(exp_eg[5:9], pch = 19, lower.panel = NULL)
+```
+
+## Distribution Plots
+
+```{r}
+exp_eg[1:9] %>%
+  keep(is.numeric) %>%                     # Keep only numeric columns
+  gather() %>%                             # Convert to key-value pairs
+  ggplot(aes(value)) +                     # Plot the values
+    facet_wrap(~ key, scales = "free") +   # In separate panels
+    geom_density()  
+```
+
+## Hierarchical Clustering
+
+### Standard Scaling
+
+```{r}
+exp <- scale(exp_eg[, 1:9])
+head(round(exp, 3))
+```
+
+### Proximity Matrix (Squared Euclidean Distance)
+
+```{r}
+dist<-dist(exp,method="euclidean")^2
+round(dist, 2)
+```
+
+### Linkage
+
+#### Single Linkage
+
+```{r}
+fit <- hclust(dist, method="single")
+
+#clustering histroy, height is distance
+history<-cbind(fit$merge,fit$height)
+history
+
+#distance plot
+ggplot(mapping=aes(x=1:length(fit$height),y=fit$height))+
+  geom_line()+
+  geom_point()+
+  labs(x="stage",y="height")
+
+#dendrogram
+par(mar=c(1,4,1,1))
+plot(fit,labels=exp_eg$case,hang=-1,main="")
+axis(side = 2, at = seq(0, 16, 2))
+
+#4-cluster solution
+cutree(fit, k=4) #cluster index
+sol <- data.frame(cluster=cutree(fit, k=4),id=exp_eg$case)
+sol
+```
+
+#### Ward's method
+
+```{r}
+#Ward's method
+#dist<-dist(exp,method="euclidean")^2
+fit <- hclust(dist, method="ward.D")
+history<-cbind(fit$merge,fit$height)
+history
+
+ggplot(mapping=aes(x=1:length(fit$height),y=fit$height))+
+  geom_line()+
+  geom_point()+
+  labs(x="stage",y="height")
+
+plot(fit,labels=exp_eg$case,hang=-1,sub="",xlab="",main="")
+axis(side = 2, at = seq(0, 100, 20))
+
+#clustering
+cluster<-cutree(fit,k=4)
+case<-exp_eg$case
+sol <- data.frame(cluster,exp,case)
+sol[ order(sol$cluster),c(1,11) ]
+```
+
+## Profile Plots
+
+Get centroids (means) fo each variable and compare across clusters
+
+```{r}
+#cluster means
+tb<-aggregate(x=sol[,2:10], by=list(cluster=sol$cluster),FUN=mean)
+print(tb,digits=2)
+
+#profile plot
+tbm<-melt(tb,id.vars='cluster')
+tbm$cluster<-factor(tbm$cluster)
+ggplot(tbm, 
+       aes(x = variable, y = value, group = cluster, colour = cluster)) + 
+  geom_line(aes(linetype=cluster))+
+  geom_point(aes(shape=cluster)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean")
+```
+
+## Interpretation of Clusters
+
+* Single linkage tends to form larger clusters compared to ward's
+* C1: large amount in other, clothing and education, small amount in food and transportation.
+* C2: large amount in food, small amount in living and communication.
+* C3: large in entertainment and small in education and saving.
+* C4: large amount in transportation, living, communication and saving, small in other and clothing.
+
+### Cluster Count
+```{r}
+tbl <- as.data.frame(table(sol$cluster))
+
+colnames(tbl) <- c("Cluster", "Frequency") 
+
+ggplot(tbl, aes(factor(Cluster), Frequency, fill = Cluster)) +     
+  geom_col(position = 'dodge')
+```
+
+# Faces Dataset 
+
+* Only has binary attributes
+
+## EDA
+
+```{r}
+faces <- read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/data/faces.csv")
+
+head(exp_eg)
+```
+
+```{r}
+describe(faces, skew=F, ranges = F)
+```
+
+## Hierarchical Clustering
+
+### Scaling
+
+* Not needed as columns are already binary
+
+
+### Proximity Matrix
+
+```{r}
+#Squared Euclidean distance = number of misatched
+#number of  mismatched
+dist<-dist(faces[,2:6],method="euclidean")^2
+dist
+```
+
+### Linkage
+
+#### Complete Linkage
+
+```{r}
+#complete linkage
+fit <- hclust(dist, method="com")
+history<-cbind(fit$merge,fit$height)
+history
+```
+
+### Distance Plot
+
+```{r}
+#plot of distances
+ggplot(mapping=aes(x=1:length(fit$height),y=fit$height))+
+  geom_line()+
+  geom_point()+
+  labs(x="stage",y="height")
+```
+
+* Large jump from 3 to 2 clusters, hence, suggested 3 clusters
+
+### Dendogram
+
+```{r}
+#dengrogram
+par(mar=c(2,5,1,1))
+plot(fit,labels=faces$id,hang=-1,sub="",xlab="",main="")
+axis(side = 2, at = seq(0, 0.8, 0.2))
+```
+
+### Cluster Solution
+
+```{r}
+#3-cluster solution
+#cutreee() cut a tree into clusters
+#tree= tree produced by hclust()
+#k= number of clusters
+sol <- data.frame(cluster=cutree(tree=fit, k=3),faces)
+sol[order(sol[,1]),1:2]
+table(sol[,1])
+```
+
+### Prop Table
+
+```{r}
+#crosstab
+for (i in 3:7) {
+  print(colnames(sol)[i])
+  t<-table(sol$cluster,sol[,i])
+  print(prop.table(t,1))
+}
+```
+
+## Cluster Chracteristics
+
+
+```{r}
+sol_table <- sol[, c(1, 3,4,5,6,7)]
+
+sol_table %>%
+  group_by(cluster) %>%
+  summarise_at(vars(c('sex', 'glasses', 'moustache', 'smile', 'hat')), funs(mean(., na.rm=TRUE)))
+
+sol_table %>% 
+  group_by(cluster) %>% 
+    summarise(Count = n())
+
+```
+
+# U.S Utility Companies
+
+## EDA
+
+```{r}
+public<-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/data/public.csv", header = TRUE)
+
+head(public)
+describe(public, skew = F, ranges = F)
+```
+
+## K-Means Clustering
+
+### Scaling
+
+```{r}
+public[,3:10]<-scale(public[,3:10]) ; head(public)
+```
+
+### Pilot CLustering
+
+```{r}
+#k-means method, 5-cluster solution
+set.seed(12345)
+#kmeans() K-means clustering
+#x= data set
+#centers= number of clusters/centers of clusters
+#algorithm= K-means algorithm
+# MacQueen's method the traditional method
+fit<-kmeans(x=public[3:10],centers=5,algorithm="MacQueen")
+fit
+
+#BSS/ESS, ratio r, higher is better
+fit$betweenss/fit1$tot.withinss
+
+#cluster solution
+fit$cluster
+```
+
+### Clustering with centriods from hclust of ward's distance
+
+```{r}
+#rerun K-means with seeds from the Ward's method
+dist<-dist(public[,3:10],method="euclidean")^2
+fit2 <- hclust(dist, method="ward.D")
+ward.sol<-cutree(fit2,k=5)
+tb<-aggregate(public[,3:10],by=list(ward=ward.sol),FUN=mean)
+#use the centers as seeds
+fit1<-kmeans(x=public[3:10],centers=tb[,2:9],algorithm="MacQueen")
+fit1
+
+#BSS/ESS, ratio r, higher is better
+fit1$betweenss/fit1$tot.withinss
+
+#cluster solution
+fit1$cluster
+```
+
+* Higher r ratio for using hclust centers
+
+## Visualizing clusters
+
+```{r}
+#cluster centers
+tb<-fit1$centers
+
+tb<-data.frame(cbind(tb,cluster=1:5))
+tbm<-melt(tb,id.vars='cluster')
+tbm$cluster<-factor(tbm$cluster)
+ggplot(tbm, 
+       aes(x = variable, y = value, group = cluster, colour = cluster)) + 
+  geom_line(aes(linetype=cluster))+
+  geom_point(aes(shape=cluster)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean")
+```
+
+## Cluster Count
+
+```{r}
+tbl <- as.data.frame(table(fit1$cluster))
+
+colnames(tbl) <- c("Cluster", "Frequency") 
+
+ggplot(tbl, aes(factor(Cluster), Frequency, fill = Cluster)) +     
+  geom_col(position = 'dodge')
+```
+
+### Cluster Insights
+
+Utility companies tend to group/competitive according to geographical location
+
+* C4: East and West but near coasts
+* C2: Eastern + Central
+* C1: Southern
+* C5: North-West
+* 5 (Consolidated Edison Co.) stands by itself
+
+Firms with similar locations (or types of locations) cluster
+
+* Firms in the same area to use, basically, the same type of fuel(s) for power plants and face common markets
+
+* Consequently, type of generation, costs, growth rates, and so forth should be relatively homogeneous among these firms.
+
+## Algorithm Comparison
+
+```{r}
+#combine data 
+sol<-cbind(kmeans=fit1$cluster,ward=ward.sol,kmeans_initial=fit$cluster,public)
+sol[order(sol[1]),c("name","id", "kmeans","ward", "kmeans_initial")]
+```
+
+* Using the centers of the ward in K means will give us back the same clustering results in this case. 
+* Using the centers of ward in K means is indirectly using the same set seed
