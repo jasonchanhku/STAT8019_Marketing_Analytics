@@ -1,0 +1,308 @@
+---
+title: "Tutorial 2"
+output: 
+  html_notebook:
+    toc: true
+---
+
+# Tutorial 2
+
+# Libraries
+
+```{r, warning=FALSE}
+library(dplyr)
+library(tidyverse)
+library(psych)
+library(magrittr)
+library(reshape2)
+```
+
+
+# Question 3
+
+The survey contains the results from 20 customers on broadband internet service. 
+
+* The customers’ income X1
+* Age X2 
+* Education X3 (in years)
+* Expenses on internet service X4 (per month)
+* Hours of service X5 (per day)
+* the type of internet they used Y 
+  * (1-PCCW Ltd.; 2-New World Telecommunications Ltd.; 3-Pacific Internet (HK) Ltd.)
+
+## EDA
+
+```{r}
+internet <- read.csv("~/MSTAT/STAT8019_Marketing_Analytics/data/TUT0301.csv")
+str(internet)
+head(internet)
+```
+
+```{r}
+describe(internet, skew = F, ranges = F)
+```
+
+### Distribution Plot
+
+```{r}
+internet%>%
+  keep(is.numeric) %>%                     # Keep only numeric columns
+  gather() %>%                             # Convert to key-value pairs
+  ggplot(aes(value)) +                     # Plot the values
+    facet_wrap(~ key, scales = "free") +   # In separate panels
+    geom_density()  
+```
+
+## Hierarchicul Clustering
+
+### Standardization
+
+```{r}
+# Use standard scaling on variables
+# exclude Y , hence only 5 variables to cluster
+internet_sc <- scale(internet[, 2:6]) ; internet_sc
+
+
+```
+
+### Proximity Matrix (using Squared Euclidean Distance)
+
+```{r}
+internet_dist <- dist(internet_sc, method = "euclidean")^2
+round((internet_dist), 3)
+```
+
+### Ward's Method as Distance Between Clusters
+
+```{r}
+internet_fit <- hclust(internet_dist, method = "ward.D")
+summary(internet_fit)
+```
+
+#### Merging History
+
+```{r}
+# get merging history
+internet_history <- cbind(internet_fit$merge, internet_fit$height)
+internet_history
+```
+
+### Selecting Appropriate Number of Clusters
+
+#### Distance plot 
+
+```{r}
+ggplot(mapping=aes(x=1:length(internet_fit$height),y=internet_fit$height))+
+  geom_line()+
+  geom_point()+
+  labs(x="stage",y="height") + ggtitle("Displot Plot")
+```
+
+* The elbow above is at 3 clusters, hence 3 clusters are optimum and suggested
+
+#### Dendogram
+
+```{r}
+par(mar=c(1,4,1,3))
+plot(internet_fit,labels=internet$case,hang=-1,main="")
+axis(side = 2, at = seq(0, 100, 10))
+```
+
+### Cluster Analysis
+
+```{r}
+internet_clusters <- cutree(internet_fit, k=3)
+internet_case <- internet$case
+internet_sol <- data.frame(internet_clusters, internet_sc, internet_case)
+internet_sol[order(internet_sol$internet_clusters), c("internet_clusters", "internet_case")]
+```
+
+#### Interpreting Cluster Characteristics
+
+```{r}
+#cluster means
+tb<-aggregate(x=internet_sol[,2:6], by=list(cluster=internet_sol$internet_clusters),FUN=mean)
+print(tb,digits=2)
+```
+
+```{r}
+
+#profile plot
+tbm<-melt(tb,id.vars='cluster')
+tbm$cluster<-factor(tbm$cluster)
+ggplot(tbm, 
+       aes(x = variable, y = value, group = cluster, colour = cluster)) + 
+  geom_line(aes(linetype=cluster))+
+  geom_point(aes(shape=cluster)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean")
+```
+
+* C2: Low income, younger, people, perhaps fresh grads
+* C1: Middle class people and lifestyle
+* C3: High income lifestyle
+
+#### Numbers of customers in clusters
+
+```{r}
+tbl <- as.data.frame(table(internet_sol$internet_clusters))
+
+colnames(tbl) <- c("Cluster", "Frequency") 
+
+ggplot(tbl, aes(factor(Cluster), Frequency, fill = Cluster)) +     
+  geom_col(position = 'dodge')
+```
+
+# Question 4
+
+## EDA
+
+```{r}
+secondary <- read.csv("~/MSTAT/STAT8019_Marketing_Analytics/data/TUT0302.csv")
+str(secondary)
+head(secondary)
+```
+
+
+```{r}
+describe(secondary, skew = F, ranges = F)
+```
+
+### Distribution Plot
+
+```{r}
+secondary %>%
+  keep(is.numeric) %>%                     # Keep only numeric columns
+  gather() %>%                             # Convert to key-value pairs
+  ggplot(aes(value)) +                     # Plot the values
+    facet_wrap(~ key, scales = "free") +   # In separate panels
+    geom_density()  
+```
+
+### Correlation Plot
+
+```{r}
+cormat <- secondary %>% 
+  keep(is.numeric) %>%
+    cor() %>% 
+      round(2)
+
+cormat
+```
+
+```{r}
+melted_cormat <- melt(cormat)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + scale_fill_continuous(high = "#132B43", low = "#56B1F7")
+```
+
+## K-Means Clustering
+
+```{r}
+# Standard scaling
+
+secondary_sc <- secondary %>%
+  keep(is.numeric) %>%
+    scale()
+
+secondary_sc
+```
+
+
+### MacQueen (default)
+```{r}
+set.seed(12345)
+
+fit_mq <- kmeans(x=secondary_sc, centers = 4, algorithm = "MacQueen")
+
+fit_mq
+```
+
+### Hartigan Wong
+```{r}
+fit_hw <- kmeans(x=secondary_sc, centers = 4, algorithm = "Hartigan-Wong")
+fit_hw
+```
+
+* K-Means using MacQueen is a better fit based on the BSS/TSS ratio
+
+## Hierarchical Clustering
+
+Use its centroids for K means
+
+```{r}
+secondary_dist <- secondary_sc %>%
+  dist(method="euclidean") 
+    
+secondary_dist <- secondary_dist^2
+
+```
+
+```{r}
+second_hclust_fit <- hclust(secondary_dist, method = "ward.D")
+ward.sol <- cutree(second_hclust_fit, k=4)
+```
+
+```{r}
+# save the centers of each column
+tb<-aggregate(secondary_sc,by=list(ward=ward.sol),FUN=mean)
+tb
+
+```
+
+### Feed Centroids into K Means
+
+```{r}
+fit_k_w <- kmeans(x=secondary_sc, centers = tb[, 2:ncol(tb)], algorithm = "MacQueen")
+fit_k_w
+```
+
+* Verify that we get back the same results are the `hclust` using Ward's method
+
+```{r}
+fit_k_w$cluster == ward.sol
+```
+
+### Cluster Analysis
+
+#### Cluster Members
+```{r}
+as.data.frame(table(fit_k_w$cluster))
+```
+
+* Classes are almost balanced
+
+#### Means of Clusters
+
+```{r}
+second_comb <- data.frame(cluster=fit_k_w$cluster, secondary_sc) ; second_comb
+```
+
+
+```{r}
+second_tb <- second_comb %>% 
+  group_by(cluster) %>%
+    summarise_all(list(mean=mean)) ; second_tb
+```
+
+#### Line Plot
+
+```{r}
+#profile plot
+tbm<-melt(second_tb,id.vars='cluster')
+tbm$cluster<-factor(tbm$cluster)
+ggplot(tbm, 
+       aes(x = variable, y = value, group = cluster, colour = cluster)) + 
+  geom_line(aes(linetype=cluster))+
+  geom_point(aes(shape=cluster)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean")
+```
+
+### Class Characteristics
+
+* C1: Students who are good in other subjects except Math
+* C2: Students who are not good in any subjects
+* C3: Students who are good in every sunject, especially Math
+* C$: Students who are moderate in every subject
+
