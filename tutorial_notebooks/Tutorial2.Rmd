@@ -138,8 +138,8 @@ ggplot(tbm,
   labs(x=NULL,y="mean")
 ```
 
-* C2: Low income, younger, people, perhaps fresh grads
 * C1: Middle class people and lifestyle
+* C2: Low income, younger, people, perhaps fresh grads
 * C3: High income lifestyle
 
 #### Numbers of customers in clusters
@@ -152,6 +152,20 @@ colnames(tbl) <- c("Cluster", "Frequency")
 ggplot(tbl, aes(factor(Cluster), Frequency, fill = Cluster)) +     
   geom_col(position = 'dodge')
 ```
+
+### Telco Company serves Which Cluster
+
+```{r}
+telco_clust <- tibble(telco=internet$Y , clusters = internet_sol$internet_clusters)
+
+prop.table(table(telco_clust), 2)
+```
+
+(1-PCCW Ltd.; 2-New World Telecommunications Ltd.; 3-Pacific Internet (HK) Ltd.)
+
+* PCCW mostly low income people younger people
+* New World High income older people who uses more internet
+* Pacific internet serves the middle income people
 
 # Question 4
 
