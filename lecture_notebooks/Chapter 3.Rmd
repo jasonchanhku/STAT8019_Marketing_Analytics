@@ -1,0 +1,416 @@
+---
+title: "Chapter 3"
+output: 
+  html_notebook:
+    toc: true
+---
+
+# Libraries
+
+```{r, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(tidyverse)
+library(psych)
+library(reshape2)
+library(GPArotation)
+```
+
+
+# Brand Data
+
+There are 9 variables here. Can the data be described in less number of variables?
+
+## EDA
+
+```{r}
+load("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/chap3r/brand.RData")
+
+head(brand.ratings)
+```
+
+```{r}
+describe(brand.ratings, skew = F, ranges = F)
+```
+
+```{r}
+brand.ratings %>%
+  keep(is.numeric) %>%                     # Keep only numeric columns
+  gather() %>%                             # Convert to key-value pairs
+  ggplot(aes(value)) +                     # Plot the values
+    facet_wrap(~ key, scales = "free") +   # In separate panels
+    geom_density()  
+```
+
+### Correlation
+
+```{r}
+print(cor(x=brand.ratings[, 1:9]), digits = 2)
+```
+
+* Perform, serious, and leader are positively correlated
+* Trendy and latest are positively correlated
+* Bargain, value, and rebuy are positively correlated
+
+## Factor Analysis using PCA method (THIS IS NOT PCA but PCFA)
+
+* `principal` uses standardized values (using the correlation matrix), hence the variance of each variable is 1
+* Since `n=9`, the total variance is 9
+
+```{r}
+fit <- principal(r=brand.ratings[, 1:9], nfactors = 9, rotate = "none")
+fit
+```
+
+* First 4 factors already explain 76% of the variance
+* If we use **Latent Root Criteria**, then only choose factors that are > 1, which is this case are the first 3 factors
+* If scree plot, elbow at 3, so first 2 factors
+
+### Scree Plot
+
+```{r}
+scree(rx=brand.ratings[, 1:9], factors = F)
+```
+
+### Decide on 3 Factors
+
+* Based on all the analysis, a 3 factor model is decided to be used
+
+```{r}
+# refit the 3 factor model
+
+fit <- principal(r=brand.ratings[, 1:9], nfactors = 3, rotate = "none")
+```
+
+```{r}
+fit$loadings
+```
+
+
+* This implies the following:
+  * $Z_{perform} = 0.41F_{1} + 0.61F_{2} - 0.04F_{3} + \epsilon_1$
+  * $Z_{leader} = 0.36F_{1} + 0.76F_{2} + 0.10F_{3} + \epsilon_2$
+  * ...
+
+
+```{r}
+fit$communality
+```
+
+```{r}
+fit$uniquenesses
+```
+
+
+* `h2` is the communality and `u2` is the uniqueness, sum is 1
+  * 54% of variance of `perform` explained by 3 factors, $(0.41)^2+(0.61)^2+(-0.04)^2 = 0.54$
+  * ...
+
+### Apply Rotation with `rotate=varimax`
+
+* Rotation doesn't change the communalities and uniqueness
+* Total variance explain will also still be the same
+* Loadings will be different
+
+```{r}
+#rotate="varimax" varimax rotation
+#method="regression" factor scores estimated by regression method
+fitr <- principal(r=brand.ratings[,1:9],nfactors=3,rotate="varimax",method="regression")
+fitr
+```
+
+In terms of the rotated loadings:
+
+* $Z_{perform} = 0.72F^*_1 + 0.10F^*_2 - 0.09F^*_3 + \epsilon_1$
+* ...
+
+We may interpret the rotated loadings as follows:
+
+* Factor 1
+  * Loads heavy on (descending order) `leader, performs, serious`
+  * Loads negative on `fun`
+  * Leader factor
+  * Customers look at leader, then high score for perform, leader, serious, low score for fun
+
+* Factor 2
+  * Loads heavy on `bargain, value, rebuy`
+  * Value factor
+
+* Factor 3
+  * Loads heavy on `latest, trendy`
+  * Latest factor
+
+#### Rotation Matrix
+
+* This is the rotation matrix **T** that is in $LT=L^*$
+
+```{r}
+fitr$rot.mat[c(1,2,3), c(2,1,3)]
+```
+
+### Weights and Scores
+
+```{r}
+fitr$weights
+```
+
+```{r}
+head(scale(brand.ratings[, 1:9]))
+```
+
+
+* $Z_{perform}$ is the standardized value of Z
+
+* Observation 1
+  * Factor 1 score $f^*_1 = 0.32Z_{perform} + ... +0.11Z_{rebuy}$
+  * $f^*_1 = 0.32(-0.78) + ... +0.11(0.89) = -0.86$
+
+```{r}
+head(fitr$scores)
+```
+
+### Mean Scores by Brand
+
+```{r}
+scores<-cbind(brand.ratings["brand"],fitr$scores)
+
+#group means of factor scores
+tb<-aggregate(.~brand,data=scores,FUN=mean)
+tb
+```
+
+```{r}
+#plot of the group means
+tbm<-melt(tb,id.vars='brand')
+
+ggplot(tbm, 
+       aes(x = variable, y = value, group = brand, colour = brand)) + 
+  geom_line(aes(linetype=brand))+
+  geom_point(aes(shape=brand)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean") +
+  scale_shape_manual(values=1:nlevels(tbm$brand)) +
+  scale_color_manual(values=c(1,2,2,3,4,5,5,3,3,1))
+```
+
+**Interpretation**
+
+* Brand F, G, high at Value (factor 2)
+* Brands B, C high at Leader (factor 1)
+* Brands E: high at Latest (factor 3) and high at Value (factor 2)
+* Brands A, J: low at Leader (factor 1) ⇒ high at Fun
+* Brands D, H, I: high at Latest (factor 3) and low at Value (factor 2)
+
+
+### 2-Factor Solution
+
+```{r}
+#2-factor solution
+fit <- principal(r=brand.ratings[1:9], nfactors=2,rotate="varimax")
+
+#plot of factor loadings
+ld<-data.frame(fit$loadings[,1:2])
+ggplot(data=ld,aes(x=RC1,y=RC2))+
+  geom_point()+
+  geom_text(aes(label=rownames(ld),vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))+
+  coord_cartesian(xlim = c(-1,1),ylim=c(-1,1)) 
+```
+
+* Consistent with results from the 3 factor solution, similar grouping
+* Even with 2 dimensions, structure still retain
+* Leader, serious, perform are correlated
+* Value, rebuy and bargain are correlated
+* Latest, trendy are correlated
+* Fun on its own
+
+```{r}
+#means factor scores
+sc<-data.frame(fit$scores,brand=brand.ratings$brand)
+tb<-aggregate(.~brand,data=sc,FUN=mean)
+#plot
+ggplot(data=tb,aes(x=RC1,y=RC2))+
+  geom_point()+
+  geom_text(aes(label=brand,vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))
+```
+
+* Comparing the factor loadings plot and the factor scores plot
+  * B, C
+* Leader, serious, perform
+  * F, G
+* Value, rebuy, bargain
+  * A, J
+* Fun
+  * D, H, I
+* Latest, trendy
+  * E
+* No strong characteristic
+
+#### Clustering using Ward's Method
+
+Based on plot above, it seems like there are 5 groups. Clustering can be done to see if it is consistent with above groupings.
+
+```{r}
+dist<-dist(sc[1:2],method="euclidean")^2
+fitc <- hclust(dist, method="ward.D")
+sol <- cutree(fitc, k=5)
+sol<-data.frame(sol,sc)
+sol$sol<-factor(sol$sol)
+ggplot(data=sol,aes(x=RC1,y=RC2,colour=sol))+
+  geom_point(aes(shape=sol)) +
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))
+```
+
+```{r}
+table(sol[c("sol", "brand")])
+```
+
+# Preference Data
+
+Instead of Principle Component method, the **Maximum Likelihood** method will be used for obtaining the Factors.
+
+## EDA
+
+```{r}
+pref<-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/chap3r/pref.csv", header = TRUE)
+
+colnames(pref) <- c("id", "taste", "goodbuy", "flavor", "suitable", "energy")
+
+head(pref)
+```
+
+```{r}
+describe(pref, skew = F, ranges = F)
+```
+
+```{r}
+pref[, 2:6] %>%
+  keep(is.numeric) %>%                     # Keep only numeric columns
+  gather() %>%                             # Convert to key-value pairs
+  ggplot(aes(value)) +                     # Plot the values
+    facet_wrap(~ key, scales = "free") +   # In separate panels
+    geom_density()  
+```
+
+
+```{r}
+as.data.frame(round(cor(pref[, 2:6]), 2))
+```
+
+* Taste and Flavor (correlation = 0.899), Good buy for money and Provides lots of energy (correlation = 0.728) form groups
+
+* Suitable for snack closer to (Good buy for money and Provides lots of energy) (correlation = 0.730 and 0.712) than (Taste and Flavor) (correlation = 0.623 and 0.584)
+
+* Linear relationships between the variables can be explained in terms of 2 (or 3) common factors
+
+### Scree Plot
+
+```{r}
+#scree plot
+scp<-scree(pref[2:6],factors = F)
+```
+
+These are the eigen values estimated by the principle component method, unrotated.
+
+```{r}
+scp$pc
+```
+
+## Factor Analysis using MLE
+
+Unrotated
+```{r}
+fit <- fa(r=pref[, 2:6], nfactors = 2, rotate = "none", fm = "ml")
+fit
+```
+
+```{r}
+fit$communalities
+```
+
+* Based on the Chi-Squared test above, 2 factors are sufficient, 83% of variance can be explained
+* R always shows the Barlett Corrected $\chi^2$ statistic
+
+### Factor Loadings
+
+```{r}
+#factor loadings
+ld<-data.frame(fit$loadings[,1:fit$factors])
+ggplot(data=ld,aes(x=ML1,y=ML2))+
+  geom_point()+
+  geom_text(aes(label=rownames(ld),vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))+
+  coord_cartesian(xlim = c(-1,1),ylim=c(-1,1)) 
+```
+
+### With Rotation
+
+```{r}
+#varimax rotation
+#scores="regression" regression method for factor scores
+fitr<-fa(r=pref[2:6],nfactors=2,rotate="varimax",fm="ml",scores="regression")
+print(fitr, digits = 3)
+```
+
+* Factor 1
+  * Good buy for money (X2), Suitable for snack (X4) and Provides lots of energy (X5) define factor 1 (high loadings on factor 1, small or negligible loadings on factor 2)
+  * Nutritional factor
+  
+* Factor 2
+  * Taste (X1) and Flavor (X3) define factor 2 (high loadings on factor 2, small or negligible loadings on factor 1)
+  * Taste factor
+
+```{r}
+#loading plot
+ld<-data.frame(fitr$loadings[,1:fitr$factors])
+ggplot(data=ld,aes(x=ML2,y=ML1))+
+  geom_point()+
+  geom_text(aes(label=rownames(ld),vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))+
+  coord_cartesian(xlim = c(-1,1),ylim=c(-1,1)) 
+```
+
+
+```{r}
+fitr$weights
+```
+
+```{r}
+head(fitr$scores)
+```
+
+* As usual, communalities and total variance explained doesn't change.
+
+### Perceptual Plot
+
+* Individual plots of each observation with Factor Scores
+
+```{r}
+#factor scores
+sc<-data.frame(fitr$scores)
+ggplot(data=sc,aes(x=ML2,y=ML1))+
+  geom_point()+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))+
+  geom_text(aes(label=pref$id,vjust=2))+
+  coord_cartesian(ylim=c(-3,2)) 
+
+```
+
+** ML2 = nutrition , ML1 = taste **
+
+* Most people preferred good at both nutrition and taste
+* There are extreme cases
+  * Case 44 and 4
+* Prefer very good at taste even if very bad at nutrition
+  * Case 22 and 16
+* Prefer very good at nutrition even if very bad at taste
+  * No people preferred product that is bad at both nutrition and taste
+
