@@ -1,0 +1,265 @@
+---
+title: "Tutorial 3"
+output: html_notebook
+---
+
+# Libraries
+
+```{r}
+library(psych)
+library(GPArotation)
+library(reshape2)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(tidyverse)
+library(cowplot)
+library(MASS)
+```
+
+
+# Data
+
+```{r}
+eg<-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t3_data/TUT05.csv")
+
+load("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t3_data/TUT0502.RData")
+
+```
+
+# Question 3
+
+```{r}
+eg$Y<-factor(eg$Y,labels=c("PCCW","NWT","Pacific"))
+head(eg)
+```
+
+## Part (b) and (c)
+
+```{r}
+fit <- principal(r=eg[, 2:6], nfactors = 5, rotate = "None")
+fit
+```
+
+```{r}
+scree(rx=eg[, 2:6], factors = FALSE)
+```
+
+
+* From above, `m=2` is then chosen
+
+## Part (d)
+
+```{r}
+fit <- principal(r=eg[, 2:6], nfactors = 2, rotate = "None")
+fit$communality
+```
+
+* Since all communalities are **more than 0.7**, it fits quite well
+
+## Part (e)
+
+```{r}
+fitr <- principal(r=eg[, 2:6], nfactors = 2, rotate = "varimax")
+fitr
+```
+
+* Communality and % total variance explained remains the same
+
+```{r}
+#plot of factor loadings
+ld<-data.frame(fit$loadings[,1:2])
+
+no_rot <- ggplot(data=ld,aes(x=PC1,y=PC2))+
+  geom_point()+
+  geom_text(aes(label=rownames(ld),vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))+
+  coord_cartesian(xlim = c(-1,1),ylim=c(-1,1)) 
+
+ld_rot<-data.frame(fitr$loadings[,1:2])
+
+rot <- ggplot(data=ld_rot,aes(x=RC1,y=RC2))+
+  geom_point()+
+  geom_text(aes(label=rownames(ld),vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))+
+  coord_cartesian(xlim = c(-1,1),ylim=c(-1,1)) 
+
+plot_grid(no_rot, rot, labels = "AUTO")
+
+```
+
+* All loadings became positive after rotation of anti-clockwise
+
+## Part (f)
+
+```{r}
+round(ld_rot, 2)
+```
+
+* F1 loads heavy on age, income, edu (background factor)
+* F2 loads heavy on hour and expense (service usage factor)
+
+
+
+The FA model is as follows:
+
+$$Z_{income} = 0.82F^*_1 + 0.34F^*_2$$ 
+$$Z_{age} = 0.92F^*_1 + 0.14F^*_2$$ 
+$$Z_{edu} = 0.66F^*_1 + 0.51F^*_2$$ 
+$$Z_{expense} = 0.46F^*_1 + 0.73F^*_2$$ 
+
+$$Z_{hour} = 0.15F^*_1 + 0.91F^*_2$$ 
+
+## Part (g)
+
+```{r}
+round(fitr$weights, 2)
+```
+
+Based on the above,
+
+$$\hat{F^*_1} = 0.41Z_{income} + 0.61Z_{age} + 0.23Z_{edu} - 0.03Z_{expense} - 0.36Z_{hour}$$
+
+$$\hat{F^*_1} = -0.11Z_{income} - 0.34Z_{age} + 0.14Z_{edu} - 0.44Z_{expense} - 0.76Z_{hour}$$
+
+```{r}
+head(fitr$scores)
+```
+
+## Part (h) Perceptual Map
+
+```{r}
+sc<-data.frame(fitr$scores,Y=eg$Y)
+ggplot(data=sc,aes(x=RC1,y=RC2))+
+  geom_point(aes(color=Y))+
+  geom_text(aes(label=eg$ID,vjust=1))+
+  geom_vline(aes(xintercept=0))+
+  geom_hline(aes(yintercept=0))
+```
+
+## Part (i)
+
+* The PCCW users (-ve factor 1 and factor 2 scores) tend to be young, low income and less educated. Most of them do not spend a lot of money and time on internet services.
+
+* For New World users (+ve factor 1 score), they are old, high income and highly educated. Some of them may spent a lot of time and money on internet while some of them may not.
+
+* For Pacific Internet users, their levels of attributes are just in between these two groups. Therefore, their behavior is the combination of these two groups of users.
+
+# Question 4
+
+```{r}
+head(x)
+```
+
+## Part (a)
+
+### Scree Plot
+
+```{r}
+scree(x, factors = FALSE)
+```
+
+
+```{r}
+# shouldn't we use covar = TRUE?
+fit<-principal(r=x, nfactors=9,rotate="none")
+fit
+```
+
+* Based on scree plot and latent root, 2 factors are suggested
+
+### 2 Factor Solution
+
+```{r}
+fitr<-principal(r=x, nfactors=2,rotate="varimax")
+fitr
+```
+
+### 3 Factor Solution
+
+```{r}
+fitr<-principal(r=x, nfactors=3,rotate="varimax")
+fitr
+```
+
+## Part (b)
+
+```{r}
+#b
+dist<-dist(x,method="euclidean")^2
+fit <- hclust(dist, method="ward.D")
+plot(fit)
+
+```
+
+* 2 Clusters suggested
+
+
+```{r}
+sol<-cutree(fit,k=2)
+print(aggregate(x,by=list(cluster=sol),FUN=mean),digits=2)
+```
+
+## Part (c)
+
+Construct FA using PC method for each of the 2 clusters.
+
+### Cluster 1
+
+```{r}
+scree(rx=x[sol==1, ], factors = F)
+```
+
+```{r}
+principal(x[sol==1, ], nfactors = 9, rotate = "none")
+```
+
+```{r}
+# rotated
+principal(x[sol==1, ], nfactors = 3, rotate = "none")
+
+```
+
+
+### Cluster 2
+
+```{r}
+scree(rx=x[sol==2, ], factors = F)
+
+```
+
+
+```{r}
+principal(x[sol==2, ], nfactors = 9, rotate = "none")
+
+```
+
+
+```{r}
+principal(x[sol==1, ], nfactors = 3, rotate = "varimax")
+
+```
+
+For both FAs
+
+* F1 loads heavy on x1, x2, x3
+* F2 loads heavy on x4, x5, x6
+* F3 loads heavy on x7, x8, x9
+
+This implies they have the same data structure for factor model. But when combine them, we get total different results
+
+# Model Assumption Recap
+
+* Assume that X - mu = LF + epsilon
+* All observation come from same population
+* In this example, 2 different populations, 2 diff mean vectors
+* Apple a factor model on mixed data
+
+<center>
+
+![](/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notebooks/mixed_population.png)
+
+
+</center>
