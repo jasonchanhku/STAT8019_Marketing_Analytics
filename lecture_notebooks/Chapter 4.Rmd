@@ -1,0 +1,249 @@
+---
+title: "Chapter 4"
+output: 
+  html_notebook:
+    toc: true
+---
+
+# Libraries
+
+```{r, message=FALSE}
+library(magrittr)
+library(tidyverse)
+library(dplyr)
+library(psych)
+library(smacof)
+library(ggplot2)
+library(cmdpref)
+```
+
+# Example 1 (Airlines Data)
+
+* Data is distances between pairs of US cities
+* Use MDS to obtain map of cities
+* Small values are similar
+
+```{r}
+airlines<- read.csv("~/MSTAT/STAT8019_Marketing_Analytics/lecture notes/chap4r/airlines.csv", row.names = 1, header = T)
+
+airlines
+```
+
+**Solution**
+
+* Attribute free (only distance)
+
+* Transformation
+  * Ratio is meaningful
+  * Other transformation is possible
+
+## Fit MDS
+
+* Can vary the number of dimensions
+* Small similar, large difference
+* IF the other way round, need to convert, maybe use reciprocal
+
+```{r}
+#mds() multidimensional scaling
+#delta= dissimilarity matrix
+#ndim= number of dimensions
+#type="ratio" ratio transformation
+fit1<-mds(delta=airlines,ndim=1,type="ratio")
+fit1
+fit2<-mds(delta=airlines,ndim=2,type="ratio")
+fit2
+fit3<-mds(delta=airlines,ndim=3,type="ratio")
+fit3
+fit4<-mds(delta=airlines,ndim=4,type="ratio")
+fit4
+```
+
+### Stress Scree Plot
+
+```{r}
+#scree plot
+stress<-data.frame(dim=1:4,stress=c(fit1$stress,fit2$stress,fit3$stress,fit4$stress))
+ggplot(data=stress,aes(x=dim,y=stress))+
+  geom_line()+
+  geom_point()
+```
+
+* 2 dimensins are the best, lowest stress
+* Not necessarily continue decreasing
+* Similar to map, 2 dimensions are enough
+
+## Coordinates
+
+```{r}
+#configuration
+summary(fit2)
+```
+
+* Flip xy axis to flip for better illustration
+
+```{r}
+#flip horizontally and vertically so as to be consistent with US map
+fit2$conf<- -fit2$conf
+#plot the configuration
+plot(fit2,xlim=c(-1.5,1.2),ylim=c(-0.5,0.7),main="",cex=2)
+```
+
+### Divided (Ratio) Distance from coordinates
+
+* Will return the ratio distance rather than the original absolute distance
+
+```{r}
+#derived distances
+fit2$confdist
+```
+
+```{r}
+#derived distances vs original distances
+plot(fit2,plot.type="Shepard")
+```
+
+* Straight line implies what we observe and what we divide are consistent with each other
+
+# Example 2 (Cars Data)
+
+* ranking of 55 pairs
+* 1 - 55
+* Smaller rank is similar, larger rank is dissimilar
+
+
+```{r}
+cars<-read.csv("~/MSTAT/STAT8019_Marketing_Analytics/lecture notes/chap4r/cars.csv", header = TRUE,row.names=1)
+cars
+```
+
+## `"interval"` Transformation
+
+* D* = a + bD
+
+```{r}
+fit <- mds(cars, ndim = 2, type="interval")
+summary(fit)
+```
+
+```{r}
+fit$stress
+```
+
+### Perceptual Plot
+
+```{r}
+plot(fit,xlim=c(-1.2,1.3),main="",cex=2)
+```
+
+
+## `"ordinal"` transformation
+
+* Ordering of the data is meaningful
+* Others such as difference, ratio, are not meaningful
+
+```{r}
+fit2 <- mds(cars, ndim = 2, type="ordinal")
+summary(fit2)
+```
+
+```{r}
+fit2$stress
+```
+
+* Clearly it is the ordinal level analysis that fits the data better
+
+```{r}
+plot(fit2,xlim=c(-1.2,1.3),main="",cex=1)
+```
+
+
+# Example 3 (Newspaper data)
+
+* Using `mdpref` data because data structure is preference type
+* Larger number is higher preference, lower is lesser preference
+
+```{r}
+newspaper<-read.csv("~/MSTAT/STAT8019_Marketing_Analytics/lecture notes/chap4r/newspaper1t.csv", header = TRUE,row.names=1)
+newspaper
+```
+
+## `cmdpref` model
+
+```{r}
+fit<-cmdpref(newspaper,monotone=T)
+
+fit
+```
+
+```{r}
+summary(fit)
+```
+
+## Perceptual Map
+
+```{r}
+par(mar=c(2,1,2,1))
+plot(fit)
+```
+
+* Dimension 1 splits by global vs local
+  * global - NYT, BG
+  * local - BH, NYP, NYDW
+  
+* Dimension 2 , some difference between BH, NYP, BG vs NYT, NYDN
+
+* Each newspaper are far from one another, so no keen competition
+
+# Example 4 (Breakfast Data)
+
+* Using `mdpref` model
+
+```{r}
+breakfast<-read.csv("~/MSTAT/STAT8019_Marketing_Analytics/lecture notes/chap4r/b1.csv", header = TRUE,row.names = 2)
+head(breakfast[,1:7])
+```
+
+## `mdpref` Model
+
+* Set `monotone=T` because it is rank data (ordinal)
+
+```{r}
+fit<-cmdpref(breakfast[,2:22],monotone=T,maxit=100)
+summary(fit)
+```
+
+## Perceptive Map
+
+* Major finding for the MDS is the plot
+* Subjectively interpret
+
+```{r}
+par(mar=c(2,1,2,1))
+plot(fit, xlim=c(-3, 3))
+```
+
+* Dim 1 separates the simple-soft vs toasted-hard
+* Dim 2 separates the simple-hard vs soft-toasted
+
+4 Major Segments
+
+* Simple
+* Hard
+* Toasted
+* Soft
+
+```{r}
+#object plot
+plot(fit$score)
+text(fit$score,labels=rownames(fit$score),cex=0.8,pos=1)
+
+```
+
+```{r}
+#subject plot
+plot(fit$corr)
+text(fit$corr,labels=rownames(fit$corr),cex=0.8,pos=1)
+```
+
+* MDS gives subjective segment and positioning
+* MAjor result is the graph to interpret
