@@ -1,0 +1,154 @@
+---
+title: "Tutorial 4"
+output: 
+  html_notebook:
+    toc: true
+---
+
+# Libraries
+
+```{r, message=FALSE}
+library(dplyr)
+library(smacof)
+library(cmdpref)
+library(ggplot2)
+```
+
+
+# Question 2
+
+* Small number is similar, large is different
+* Can straight away use this dataset to `mds()` function
+
+```{r}
+load(file='/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t4/TUT04.RData')
+```
+
+```{r}
+head(b2b)
+```
+
+## Part (a)
+
+Available scales are `"ratio", "interval", "ordinal", "mspline".`
+
+* Dataset is ranked, so use "ordinal" (nonmetric MDS)
+
+## Part (b)
+
+```{r}
+fit1 <- mds(b2b, ndim = 1, type = "ordinal")
+
+fit1
+
+fit2 <- mds(b2b, ndim = 2, type = "ordinal")
+
+fit2 
+
+fit3 <- mds(b2b, ndim = 3, type = "ordinal")
+
+fit3
+```
+
+* 2-dimensions have the lowest stress
+
+## Part (c)
+
+Perceptual map
+
+```{r}
+plot(fit2, cex=2)
+```
+
+
+## Part (d)
+
+* Differences of asian and western customers
+* Dimension 2 separates the **asian and western countries**
+* Dimension 1 separates the **northern and southern hemisphere**, culture of the countries
+
+```{r}
+# coordinates
+fit2$conf
+```
+
+## Cluster Analysis
+
+* `b2b` can also be treated as a distance matrix
+* apply `hclust` to it
+
+```{r}
+fit <- hclust(as.dist(b2b), method = 'ward.D')
+plot(fit)
+```
+
+* can first use mds to visualize map
+* then use hclust 
+* hclust only give grouping but mds give direction and visualize in map
+
+
+# Question 3
+
+* MDS unfolding model means *Multidimensional Scaling Preference (MDPREF)* model
+
+```{r}
+crisps<-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t4/TUT07.csv", header = TRUE,row.names = 1)
+head(crisps)
+```
+
+## Part (a)
+
+* Using metric MDS
+
+```{r}
+crisps <- t(crisps)
+```
+
+```{r}
+fit5 <- cmdpref(crisps, ndim = 9)
+summary(fit5)
+```
+
+* Using 2 dimensions explains 42.9% of variation
+* Using 5 dimensions explains 72% of variation
+
+## Part (b)
+
+* Using non metric MDS, set `monotone=T`
+* Ordinal scale, rank data
+* 2 dimensions assumed
+
+### (i)
+
+```{r}
+fit2 <- cmdpref(crisps, monotone = T)
+summary(fit2)
+```
+
+* Monotine using 2 dim explains 64% of variance
+
+### (ii)
+
+```{r}
+fit2$score
+```
+
+```{r}
+head(fit2$corr)
+```
+
+### (iii)
+
+```{r}
+plot(fit2, xlim=c(-2,3))
+```
+
+* No clear goruping of consumers but there are for crisps
+* Crisp 2 and 6 are competing
+* Crisp 4 and 3 are competing
+* Others are clustered
+
+```{r}
+plot(fit2$score)
+```
+
