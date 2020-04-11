@@ -1,0 +1,297 @@
+---
+title: "Chapter 5"
+output: html_notebook
+---
+
+# Libraries
+
+```{r}
+library(conjanal)
+library(ggplot2)
+library(reshape2)
+```
+
+# Example 1: `cleanser` data
+
+* 18 for most preferred  (because have 18 profiles)
+
+* 1 for least preferred
+
+* Highest values must be most preferred and lowest must be least preferred for the program to work
+
+* Each row is a profile. Last 3 rows for prediction (choice simulation only)
+
+* Must convert to factor for program to work
+
+* Sum of part-worth is 0 (set by using `contrasts`)
+
+```{r}
+clean <-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r5/cleanser.csv")
+
+head(clean)
+```
+
+```{r}
+#define factors
+clean$color<-factor(clean$color,levels=c(1,2,3),labels=c("red","blue","yellow"))
+clean$form<-factor(clean$form,levels=c(1,2,3),labels=c("cubic","cylinder","spherical"))
+clean$scent<-factor(clean$scent,levels=c(1,2),labels=c("yes","no"))
+```
+
+```{r}
+head(clean)
+```
+
+
+## Data Preparation
+
+* Next chapter is choice based
+
+* Monotonic Anova
+
+### Step 1: Set Contrasts for Sum of Part Worths to be 0
+
+```{r}
+#set contrasts, sum=0
+contrasts(clean$color)<-contr.sum(3)
+contrasts(clean$form)<-contr.sum(3)
+contrasts(clean$scent)<-contr.sum(2)
+```
+
+### Step 2: Train, Test Split 
+```{r}
+# train test split
+# scenarios
+csimp<-clean[19:21,1:3]
+clean<-clean[1:18,]
+```
+
+```{r}
+clean
+```
+
+
+```{r}
+csimp
+```
+
+### Step 3: Create Response Matrix and Profile of Training Data
+
+* The respondents column of the training data
+
+```{r}
+#define response matrix. Need to convert as matrix
+resp<-as.matrix(clean[,4:5])
+
+#define profiles
+profile<-clean[,1:3]
+```
+
+
+### Step 4: Apply Conjoint Analysis
+
+* Because using ranking, `monotone=True`. Monotonic transformation.
+
+```{r}
+#conjanal() metric conjoint analysis
+#resp= matrix of responses
+#profile= data frame of designs
+#iv= factors
+fit.conj<-conjanal(resp=resp,profile=profile,monotone = T)
+summary(fit.conj$lm)
+```
+
+```{r}
+#contrasts of factors
+contrasts(clean$form)
+contrasts(clean$color)
+contrasts(clean$scent)
+```
+
+```{r}
+#part-worth
+fit.conj$part
+#relative importance
+fit.conj$imp
+```
+
+For `r1`:
+
+* Form is the most important factor accounting for 51% 
+* Second most important is color
+* Yellow is the most important color as it has the highest part worths among all colours
+* Cylinder most preferred
+* No scent
+* Optimal profile is yellow, cylinder, no scent
+
+For `r2`:
+
+* Color is the most important factor accounting for 42%
+* Red, cubic, no scent is preferred
+
+## Predict Utility
+
+* Predict for individual customer
+
+```{r}
+csimp
+```
+
+### Train Test set predict
+
+```{r, warning=FALSE}
+#predicted utilities
+cbind(profile,pred=predict(fit.conj$lm,newdata=profile))
+
+cbind(csimp,pred=predict(fit.conj$lm,newdata=csimp))
+```
+
+* negative predictions do happen because of linear model, no bounds
+
+## Market Share (choice simulation)
+
+### Maximum Util
+
+```{r}
+#maxconj() maximum utility
+#conjanal= result by conjanal()
+#simp= scenarios data frame
+maxconj(conjanal=fit.conj,simp=csimp)
+```
+
+### BTL
+
+```{r}
+#btlconj() BTL model
+btlconj(conjanal=fit.conj,simp=csimp)
+```
+
+### Logit
+
+```{r}
+#logitconj() logit model
+logitconj(conjanal=fit.conj,simp=csimp)
+```
+
+# Example 2 (sneakers data)
+
+* Full profile approach
+* Fractional design (9 profiles only instead of 27)
+
+```{r}
+sneaker <- read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r5/sneaker.csv")
+
+sneaker
+```
+
+* Rows describe the profile
+
+* Columns describe the responses
+
+## Data Prep
+
+```{r}
+#define factors
+sneaker$COL1<-factor(sneaker$COL1,levels=c(1,2,3),labels=c("rubber","polyurethane","plastic"))
+sneaker$COL2<-factor(sneaker$COL2,levels=c(1,2,3),labels=c("leather","canvas","nylon"))
+sneaker$COL3<-factor(sneaker$COL3,levels=c(1,2,3),labels=c("30","60","90"))
+
+#set contrasts, sum=0
+contrasts(sneaker$COL1)<-contr.sum(3)
+contrasts(sneaker$COL2)<-contr.sum(3)
+contrasts(sneaker$COL3)<-contr.sum(3)
+
+#define response matrix
+resp<-as.matrix(sneaker[,4:63])
+
+#define profiles
+profile<-sneaker[,1:3]
+```
+
+```{r}
+sneaker
+```
+
+## ANOVA Model
+
+* Has numerical and categorical, so ANOVA, not MONOANOVA
+
+```{r}
+#ANOVA model for first respondent
+fit.lm<-lm(COL4 ~ COL1 + COL2 + COL3, data=sneaker)
+summary(fit.lm)
+```
+
+* Not ranked data, so `monotone=F`
+
+```{r}
+fit.conj<-conjanal(resp,profile,monotone=F)
+fit.summary<-summary(fit.conj$lm)
+fit.summary$`Response COL4`
+```
+
+### Part Worth and VarImp
+
+```{r}
+#display the first respondent, change 1 to 2 for 2nd respondent
+fit.conj$part[,1]
+fit.conj$imp[,1]
+```
+
+## Cluster Analysis
+
+* Cluster the customers based on variable importance
+* transpose data structure and then sscale it
+
+
+### Hclust
+
+```{r}
+# standardize relative importance
+imp<-data.frame(scale(t(fit.conj$imp)))
+#Ward's method
+dist<-dist(imp,method="euclidean")^2
+clust <- hclust(dist, method="ward.D")
+
+ggplot(mapping=aes(x=1:length(clust$height),y=clust$height))+
+  geom_line()+
+  geom_point()+
+  labs(x="stage",y="height")
+
+```
+
+* 3 clusters recommended
+
+```{r}
+#par(mar=c(1,4,1,1))
+plot(clust,labels=F,hang=-1,sub="",xlab="",main="")
+```
+
+### K-means
+
+* Optimized grouping
+
+```{r}
+set.seed(123)
+fit1<-kmeans(x=imp,centers=3)
+fit1
+tb<-fit1$centers
+
+tb<-data.frame(cbind(tb,cluster=1:3))
+tbm<-melt(tb,id.vars='cluster')
+tbm$cluster<-factor(tbm$cluster)
+ggplot(tbm, 
+       aes(x = variable, y = value, group = cluster, colour = cluster)) + 
+  geom_line(aes(linetype=cluster))+
+  geom_point(aes(shape=cluster)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean")
+```
+
+**Refer to lecture notes:**
+
+* Cluster 1: Price is most important
+
+* Cluster 2: Upper is most important
+
+* Cluster 3: Sole is most important.
