@@ -1,0 +1,205 @@
+---
+title: "Tutorial 5"
+output: html_notebook
+---
+
+# Libraries
+
+```{r, message=FALSE}
+library(conjanal)
+library(ggplot2)
+library(reshape2)
+```
+
+# Question 2
+
+```{r}
+tire <- read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t5/TUT10_02.csv")
+
+head(tire)
+```
+
+
+
+## Part (a)
+
+### Set Factors
+```{r}
+#a
+tire$brand<-factor(tire$brand,levels=1:3,labels=c('Goodstone','Pirogi','Machismo'))
+tire$price<-factor(tire$price,levels=1:3,labels=c("$69.99","$74.99","$79.99"))
+tire$life<-factor(tire$life,levels=1:3,labels=c("50,000","60,000","70,000"))
+tire$hazard<-factor(tire$hazard,levels=1:2,labels=c("yes","no"))
+```
+
+
+```{r}
+contrasts(tire$brand)
+```
+
+
+```{r}
+contrasts(tire$brand)
+```
+
+
+
+### Set Contrasts
+```{r}
+contrasts(tire$brand)<-contr.sum(3)
+contrasts(tire$price)<-contr.sum(3)
+contrasts(tire$life)<-contr.sum(3)
+contrasts(tire$hazard)<-contr.sum(2)
+```
+
+```{r}
+contrasts(tire$brand)
+contrasts(tire$price)
+contrasts(tire$life)
+contrasts(tire$hazard)
+```
+
+### Extract Response and Profile
+```{r}
+resp<-as.matrix(tire[,5:9])
+profile<-tire[,1:4]
+```
+
+
+### Conjoint Analysis Model
+
+```{r}
+fit.conj<-conjanal(resp=resp,profile=profile)
+sum.fit<-summary(fit.conj$lm)
+sum.fit$`Response Subj1`$r.squared
+```
+
+```{r}
+sum.fit$`Response Subj1`$r.squared
+```
+
+Low R squared implies the model does not fit well
+
+
+## Part (b)
+
+```{r}
+fit.conj$part[, 1]
+```
+
+## Part (c)
+
+```{r}
+round(fit.conj$imp[, 1], 3)
+```
+
+* Price and life are equally important
+
+* Hazard is not important at all
+
+## Part (d)
+
+
+```{r}
+#d
+csimp<-read.table(text="
+brand price life hazard
+1 3 2 1
+2 2 3 2
+3 1 1 1",header=T)
+
+
+
+csimp$brand<-factor(csimp$brand,levels=1:3,labels=c('Goodstone','Pirogi','Machismo'))
+csimp$price<-factor(csimp$price,levels=1:3,labels=c("$69.99","$74.99","$79.99"))
+csimp$life<-factor(csimp$life,levels=1:3,labels=c("50,000","60,000","70,000"))
+csimp$hazard<-factor(csimp$hazard,levels=1:2,labels=c("yes","no"))
+
+maxconj(conjanal=fit.conj,simp=csimp)
+btlconj(conjanal=fit.conj,simp=csimp)
+logitconj(conjanal=fit.conj,simp=csimp)
+```
+
+## Part (e)
+
+### HClust
+
+
+```{r}
+imp<-data.frame(scale(t(fit.conj$imp)))
+dist<-dist(imp,method="euclidean")^2
+clust <- hclust(dist, method="ward.D")
+
+ggplot(mapping=aes(x=1:length(clust$height),y=clust$height))+
+  geom_line()+
+  geom_point()+
+  labs(x="stage",y="height")
+
+par(mar=c(1,4,1,1))
+plot(clust,labels=1:5,hang=-1,sub="",xlab="",main="")
+```
+
+* 2 cluster solution
+
+### K means
+
+```{r}
+#K-means method
+set.seed(12345)
+fit1<-kmeans(x=imp,centers=2,algorithm="MacQueen")
+fit1
+tb<-fit1$centers
+
+tb<-data.frame(cbind(tb,cluster=1:2))
+tbm<-melt(tb,id.vars='cluster')
+tbm$cluster<-factor(tbm$cluster)
+ggplot(tbm, 
+       aes(x = variable, y = value, group = cluster, colour = cluster)) + 
+  geom_line(aes(linetype=cluster))+
+  geom_point(aes(shape=cluster)) +
+  geom_hline(yintercept=0) +
+  labs(x=NULL,y="mean")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+```
+
