@@ -1,0 +1,186 @@
+---
+title: "Tutorial 6"
+output: html_notebook
+---
+
+# Libraries
+
+```{r, message=FALSE}
+library(mlogit)
+library(lmtest)
+```
+
+# Question 1
+
+```{r}
+bank<-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t6data/bank.csv", header = TRUE)
+head(bank)
+```
+
+## Part (a)
+
+```{r}
+# factor and relevel
+
+bank$switch<-factor(bank$switch,labels=c("no","yes"))
+bank$switch<-relevel(bank$switch,ref="no")
+contrasts(bank$switch)
+```
+
+```{r}
+logit <- glm(formula=switch ~ 
+               appvtime+branch+odprice+guanxi+sow,
+               data = bank, family = "binomial")
+summary(logit)
+```
+
+
+```{r}
+logit$coefficients
+```
+
+## Part (b)
+
+H1. Perceived service quality (assessed by the time required to process applications) is associated
+with a business customer’s intention to stay with a service provider. -> True and significant
+
+H2. The higher the number of bank branches, the less likely that a customer will intend to switch to
+other service providers. -> Not significant
+
+H3. For a given level of service quality, the product price differential relative to competitors is
+negatively associated with customer loyalty. -> True and significant
+
+H4. A customer’s intention to switch from a service provider is negatively associated with their
+perception of guanxi with that provider. -> True and significant
+
+H5. The higher the extent of the existing SOW, the less likely a customer will intend to switch
+service providers. -> Not significant
+
+## Part (c) RELATIVE IMPORTANCE
+
+* Because they are continous variable can just use the abs minus the range of the possible levels
+
+```{r}
+#c
+#appvtime, 1-3
+range1<-abs(logit$coefficients[2]*2)
+#branch, 0-2
+range2<-abs(logit$coefficients[3]*2)
+#odprice, 0.5-1.5
+range3<-abs(logit$coefficients[4])
+#guanxi, 1-7
+range4<-abs(logit$coefficients[5]*6)
+#sow, 1-4
+range5<-abs(logit$coefficients[6]*3)
+
+range<-c(range1,range2,range3,range4,range5)
+#range<-abs(logit$coefficients[-1]*c(2,2,1,6,3))
+range/sum(range)
+```
+
+
+## Part (d)
+
+```{r}
+nd<-data.frame(guanxi=4,sow=1,odprice=0.5,appvtime=3,branch=0)
+predict(logit,newdata=nd)
+predict(logit,newdata=nd,type="response")
+```
+
+
+# Question 2
+
+```{r}
+load(file="/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/tutorial notes/t6data/abb.RData")
+```
+
+
+## Part (a)
+
+```{r}
+#a
+ld <- mlogit.data(data=abb, choice = "choice", 
+                  shape = "long",chid.var="ID",
+                  alt.var="altid")
+
+fit<-mlogit(formula=choice~0+company,data=ld,alt.var="altid",
+            shape="long")
+summary(fit)
+```
+
+### Prep Test set and make prediction
+
+* make sure the contrasts are the same as that original data 
+
+```{r}
+new<-data.frame(company=1:4,ID=rep(999,4),altid=1:4,choice=rep(T,4))
+new$company<-factor(new$company,labels=c("ABB","General Electric","Westinghouse","McGraw-Edison"),ordered=F)
+new$company<-relevel(new$company,ref="McGraw-Edison")
+#make sure the contrasts are the same as that original data 
+contrasts(abb$company)
+contrasts(new$company)
+```
+
+```{r}
+contrasts(abb$company) == contrasts(new$company)
+```
+
+```{r}
+newld <- mlogit.data(data=new, choice = "choice", 
+                  shape = "long",chid.var="ID",
+                  alt.var="altid")
+cbind(new,predict(fit,newld))
+```
+
+### Compare with `prop.table()`
+
+```{r}
+#compare predicted share with frequency table
+tb<-table(abb$company,abb$choice)
+prop.table(tb,margin=1)
+```
+
+Gives the same result if only using 1 variable for multinomial logit
+
+
+## Part (b)
+
+```{r}
+fit<-mlogit(formula=choice~0+company+price+energyloss+
+              maintenance+warranty+spareparts+installation+
+              problem+quality,data=ld,
+            alt.var="altid",
+            shape="long")
+summary(fit)
+```
+
+## Part (c)
+
+```{r}
+#all attributes are in 9-point scale
+range<-abs(fit$coefficients[4:11])*8
+range/sum(range)
+```
+
+## Part (d)
+
+```{r}
+new<-read.table(text=
+"4,5,6,1,3,3,3,7,1,999,1
+2,2,7,2,5,2,6,4,2,999,2
+7,3,4,5,1,1,6,4,3,999,3
+2,4,3,1,3,5,4,7,4,999,4",sep=',',header=F)
+
+names(new)<-names(abb[c(5:12,16,1,19)])
+new$company<-factor(new$company,labels=c("ABB","General Electric","Westinghouse","McGraw-Edison"))
+new$company<-relevel(new$company,ref="McGraw-Edison")
+new$choice<-T
+
+newld <- mlogit.data(data=new, choice = "choice", 
+                  shape = "long",chid.var="ID",
+                  alt.var="altid")
+
+cbind(new,pred=predict(fit,newdata=newld))
+
+```
+
