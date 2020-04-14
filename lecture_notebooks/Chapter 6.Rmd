@@ -1,0 +1,452 @@
+---
+title: "Chapter"
+output: html_notebook
+---
+
+# Libraries
+
+```{r, message=FALSE}
+library(lmtest)
+library(car)
+library(mlogit)
+```
+
+# Example 1 (`book` data)
+
+```{r}
+
+book<-read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r6/book.csv", header = TRUE)
+
+head(book)
+```
+
+Independent Variables:
+
+* `lastpurchase`
+* `artbook`
+
+Response Variable:
+
+* `buy`
+
+## Frequency Distribution
+
+```{r}
+cbind( Freq=table(book[,"buy"]), percent=prop.table(table(book[,"buy"])),
+       Cum.percent=cumsum(prop.table(table(book[,"buy"]))))
+```
+
+
+## Logistic Regression Model
+
+```{r}
+logit <- glm(formula=buy ~ artbook + lastpurchase, data = book, family = binomial)
+summary(logit)
+```
+
+### Likelihood Ratio Test
+
+* Model 0: intercept only
+* Model 1: full model
+
+```{r}
+#~ 1 intercept only
+model0<-glm(buy ~ 1, data = book, family = binomial)
+#lrtest() ANOVA table and likelihood ratio test
+#lrtest(restricted model, full model)
+lrtest(model0,logit)
+```
+
+* Model shouldn't be reduced because full model is significant
+
+### Prediction
+
+#### Utility (mu)
+```{r}
+#predicted utility, xb
+predict(logit,book)[1:5]
+
+```
+
+#### Probability
+
+
+```{r}
+#predicted probability
+predict(logit,book,type="response")[1:5]
+```
+
+```{r}
+resp<-cbind(book,
+utilty=predict(logit,newdata=book),
+p=predict(logit,newdata=book,type="response"))
+resp[1001:1002,]
+```
+
+
+## Practical Analysis
+
+* What threshold probability c should be used to define 0 and 1?
+* Need to look at the profit driven equation
+
+### Top 50 customers
+
+One option is to look at top 50 customers sorted by `p`
+
+```{r}
+pred<-resp[c(-1001,-1002),]
+#list the top 50 customers with highest response probabilities
+pred[order(pred$p,decreasing=T)[1:50],c("id","p")]
+```
+
+### Profit Driven
+
+* Cost of mailing is $1
+* Net profit after mailing is $6
+* Profit maximizing strategy is to mail all with expected prob > 0
+
+$$6 \times p_c + (-1)\times(1-p_c) > 0$$
+
+leads to $p_c > 1/7$
+
+```{r}
+pred$mail<-(pred$p>1/7)
+pred1<-pred[pred$mail==T,]
+pred1[order(pred1$p,decreasing=T),c("id","p")]
+```
+
+```{r}
+table(pred$buy)
+table(pred$buy,pred$mail)
+```
+
+* If using original labels vs profit driven
+* Expected net profit of -419 vs 108
+
+# Example 1.c (`chocolate` data)
+
+* Different data structure with 8 profiles
+* `n` for number of people presented to
+* `c` for choose
+* `nc` for not choose
+
+
+```{r}
+load("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r6/chocolate.RData")
+
+chocolate
+```
+
+
+## Pre-processing
+
+* Need to convert into factors
+* Check the contrasts
+
+```{r}
+chocolate$dark<-factor(chocolate$dark,levels=1:2,labels=c("milk","dark"))
+chocolate$soft<-factor(chocolate$soft,levels=1:2,labels=c("chewy","soft"))
+chocolate$nuts<-factor(chocolate$nuts,levels=1:2,labels=c("no nuts","nuts"))
+
+
+contrasts(chocolate$dark)
+contrasts(chocolate$soft)
+contrasts(chocolate$nuts)
+```
+
+## Modelling 
+
+* Need to apply different syntax due to grouped form data
+
+```{r}
+mod.form <- "cbind(c,nc) ~ dark+soft+nuts"
+logit <- glm(formula=mod.form, family=binomial, data=chocolate)
+
+summary(logit)
+```
+
+* Soft/Chewy is the most important factor followed by dark/milk
+
+* The most preferred profile is dark, chewy , and nuts
+
+
+
+### Type III ANOVA
+
+```{r}
+#type III anova test for each factor
+Anova(logit,type="III")
+```
+
+* all are significant
+
+## Utlity & Probability Prediction
+
+```{r}
+
+cbind(logit$data,utility=predict(logit,type="link"),p=predict(logit,type="response"))
+```
+
+
+## Test set prediction
+
+```{r}
+# scenarios
+new<-read.table(text="
+dark soft nuts
+1 1 2
+2 1 1
+2 1 2",header=T)
+new$dark<-factor(new$dark,levels=1:2,labels=c("milk","dark"))
+new$soft<-factor(new$soft,levels=1:2,labels=c("chewy","soft"))
+new$nuts<-factor(new$nuts,levels=1:2,labels=c("no nuts","nuts"))
+
+cbind(new,u=predict(logit,newdata=new),p=predict(logit,newdata=new,type="response"))
+```
+
+# Example 2 (`laundry` data)
+
+```{r}
+laundry <- read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r6/laundry.csv", header = TRUE)
+
+head(laundry)
+```
+
+* `visit` is the unique identifer 
+* `alt` is the alternative choices
+
+
+## Pre-processing
+
+* Convert to factor and relevel for categorical variables
+
+```{r}
+laundry$brand<-factor(laundry$brand,levels=1:4,labels=c("Tide","Wisk","Era","Surf"))
+laundry$brand<-relevel(laundry$brand,ref="Surf")
+contrasts(laundry$brand)
+```
+
+## Modelling
+
+* Need to create a `mlogit` object
+* `shape=long` data type: the shape of the data.frame: whether long if each row is an alternative or wide if each row is an observation,
+
+### `mlogit` Object Creation
+
+```{r}
+#mlogit.dat() create data frame for logit model
+#data= input data frame
+#choice= choice variable, 0=not, 1=chosen
+#shape="long" long shape
+#chid.var= choice set ID variable, unique
+#alt.var= alternatives ID variable, 1..n
+ld <- mlogit.data(data=laundry, choice = "c", 
+                  shape = "long",chid.var="visit",
+                  alt.var="alt")
+```
+
+### Fitting (only `brand`)
+
+* intercept is 0 because for multinomial logistic regression it doesn't matter
+
+
+```{r}
+#mlogit() multinomial logit model
+#formula= model, 0 intercept
+#data= input data obatined by mlogit.data()
+#alt.var= alternatives ID variable
+#shape= shape of input data
+fit<-mlogit(formula=c~0+brand,data=ld,alt.var="alt",
+            shape="long")
+summary(fit)
+```
+
+#### Test Set & Prediction
+
+* Need to make sure test set has same data structure as train set
+* Same pre-processing
+
+```{r}
+#new data set
+new<-read.table(text="
+brand visit alt c
+1 999 1 1
+2 999 2 1
+3 999 3 1
+4 999 4 1",header=T)
+new$brand<-factor(new$brand,levels=1:4,labels=c("Tide","Wisk","Era","Surf"))
+new$brand<-relevel(new$brand,ref="Surf")
+
+contrasts(new$brand)
+
+```
+
+
+```{r}
+#convert new data frame into mlogit.data
+newld <- mlogit.data(data=new, choice = "c", 
+                  shape = "long",chid.var="visit",
+                  alt.var="alt")
+
+#predict() predict choice probabilities
+#newdata= new data set
+#predict(fit,newdata=newld)
+
+cbind(new,share=predict(fit,newdata=newld))
+```
+
+```{r}
+#crosstab brand with choice
+tb<-table(laundry$brand,laundry$c)
+prop.table(tb,margin=1)
+```
+
+### Fitting Full Model
+
+```{r}
+fit<-mlogit(formula=c~0+brand+price+disp+feat,
+            data=ld,alt.var="alt",shape="long")
+summary(fit)
+```
+
+* Most are significant at a 5% level
+
+#### Coefficients (Part-worths)
+
+```{r}
+#estimated coefficients
+fit$coefficients
+```
+
+* Since price is continuous, the part worth depends on the price
+
+$$PW_{price}=-0.51 \times price$$
+
+```{r}
+#calcualte part-worth for each price
+pu<-cbind(price=unique(ld$price),part.worth=unique(ld$price)*fit$coefficients["price"])
+pu[order(pu[,"price"]),][1:10, ]
+```
+
+#### Test Set Predictions
+
+```{r}
+# scenarios
+new<-read.table(text="
+brand disp feat price visit alt c
+1 1 0 5 999 1 1
+1 0 0 4.5 999 2 1
+3 1 1 6 999 3 1
+2 0 1 4 999 4 1
+",header=T)
+new$brand<-factor(new$brand,levels=1:4,labels=c("Tide","Wisk","Era","Surf"))
+new$brand<-relevel(new$brand,ref="Surf")
+
+newld <- mlogit.data(data=new, choice = "c", 
+                     shape = "long",chid.var="visit",
+                     alt.var="alt")
+
+cbind(new,share=predict(fit,newdata=newld))
+```
+
+# Example 3 (data mining challenge)
+
+* Computing **uplift**
+* Two options, use 2 models or 1 model
+
+
+```{r}
+mydata <- read.csv("/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r6/dm.csv")
+
+head(mydata)
+```
+
+## Pre-processing
+
+```{r}
+#remove Womens E-mail
+mydata<-mydata[mydata$segment!="Womens E-Mail",]
+
+#reset the factor levels
+mydata$conversion<-factor(mydata$conversion)
+mydata$segment<-relevel(mydata$segment,ref="No E-Mail")
+
+mydata$segment<-factor(mydata$segment)
+table(mydata$segment)
+
+contrasts(mydata$segment)
+contrasts(mydata$conversion)
+```
+
+```{r}
+table(mydata$conversion)
+```
+
+
+## Separate Models (2 models)
+
+```{r}
+#separated models
+model<-conversion ~ newbie+recency+history_segment+
+                    channel+history+zip_code+mens+womens
+
+#logistic model applied to treatment group
+fit.trt<-glm(model,data=mydata[mydata$segment=="Mens E-Mail",],family=binomial)
+summary(fit.trt)
+
+```
+
+```{r}
+#logistic model applied to control group
+fit.ctl<-glm(model,data=mydata[mydata$segment!="Mens E-Mail",],family=binomial)
+summary(fit.ctl)
+```
+
+### Prediction and Uplift
+
+```{r}
+#predict the response probability of all respondents when treatment is applied
+p.trt<-predict(fit.trt,newdata=mydata,type="response")
+#predict the response probability of all respondents when treatment is not applied
+p.ctl<-predict(fit.ctl,newdata=mydata,type="response")
+#uplift = treatment probability - control probability
+uplift<-cbind(mydata,p.trt,p.ctl,uplift=p.trt-p.ctl)
+head(uplift[order(-uplift$uplift),c("p.trt","p.ctl","uplift"),])
+```
+
+```{r}
+# for customer 32653
+mydata[rownames(mydata)==32653,]
+```
+
+
+## Combined model
+
+* Cross interact the segment with each of the variable
+
+```{r}
+#combined model
+model<-conversion ~ newbie*segment+recency*segment+history_segment*segment+
+                    channel*segment+history*segment+zip_code*segment+
+                    mens*segment+womens*segment
+
+fit.comb<-glm(model,data=mydata,family=binomial)
+summary(fit.comb)
+```
+
+
+### Prediction and Uplift
+
+```{r}
+pdata<-mydata
+#predict the response probability of all respondents when treatment is applied
+pdata$segment<-"Mens E-Mail"
+p.trt<-predict(fit.comb,newdata=pdata,type="response")
+#predict the response probability of all respondents when treatment is not applied
+pdata$segment<-"No E-Mail"
+p.ctl<-predict(fit.comb,newdata=pdata,type="response")
+uplift<-cbind(mydata,p.trt,p.ctl,uplift=p.trt-p.ctl)
+head(uplift[order(-uplift$uplift),c("p.trt","p.ctl","uplift"),])
+```
+
+
