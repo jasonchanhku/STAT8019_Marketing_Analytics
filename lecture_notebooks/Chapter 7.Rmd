@@ -1,0 +1,514 @@
+---
+title: "Chapter 7"
+output: 
+  html_notebook:
+    toc: true
+---
+
+# Libraries
+
+```{r}
+library(forecast)
+library(plyr)
+library(ggplot2)
+library(patchwork)
+```
+
+# Example 3 (Minivan)
+
+```{r}
+automob<-read.csv('/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r7/automob.csv',header=TRUE)
+#define model as factor, instead of numeric values
+#automob$model<-factor(automob$i,labels=c("Caravan","Voyager","APV","Silhouette"))
+head(automob)
+```
+
+## Pre-processing
+
+* Using APV as example
+
+```{r}
+caravan<-automob[automob$i==1,]
+voyager<-automob[automob$i==2,]
+apv<-automob[automob$i==7,]
+silhouette<-automob[automob$i==8,]
+```
+
+* Normalize data based on a record 
+
+```{r}
+#normalized data
+apv$nyt<-apv$yt/60772
+apv$nt<-apv$t/6
+```
+
+
+
+## EDA
+```{r}
+#plot of sales and cumulative sales
+#Caravan    Voyager    APV        Silhouette
+mxy<-max(apv$y)
+mxyt<-max(apv$yt)
+ 
+ggplot(data=apv, aes(x=t)) +
+       geom_line(aes(y=y,color="y")) +
+       geom_point(aes(y=y,color="y"))+
+       geom_line(aes(y=yt/mxyt*mxy,color="yt")) +
+       geom_point(aes(y=yt/mxyt*mxy,color="yt"))+
+       scale_y_continuous(sec.axis = sec_axis(~.*mxyt/mxy,name="yt")) +
+       scale_colour_manual(values = c("blue", "red")) +
+       theme(legend.position="bottom",legend.title=element_blank()) +
+       ggtitle("APV")
+```
+
+
+## Modelling
+
+### ADBUGD Model
+
+* Uses cumulative data from previous entry
+* S-shape
+
+```{r}
+#ADBUG model
+fit <- nls(f=nyt~a+b*nt^c/(nt^c+d),data=apv,
+                start=list(a=0,b=1.89,c=0.89,d=3))
+summary(fit)
+
+#r2
+r2<-1-(sum(residuals(fit)^2)/sum((fit$m$lhs()-mean(fit$m$lhs()))^2))
+r2
+```
+
+* Almost perfect fit from model onto the data
+
+```{r}
+#prediction
+nd<-read.table(text="t
+11
+12
+13
+14
+15
+",header=T)
+
+nd$nt<-nd$t/6
+
+pred<-cbind(apv,predict=predict(fit)*60772)
+
+ggplot(data=pred, aes(x=t)) +
+  geom_point(aes(y=yt)) + 
+  geom_line(aes(y=predict)) + ggtitle("ADBUDG Model Fitting on Cumulative Previous Data")
+```
+
+
+## Diffusion Model - Bass Model
+
+```{r}
+#difussion model
+#Caravan    Voyager    APV        Silhouette
+#Bass model
+fit1 <- nls(f=y~a*n+(b-a)*yt-b/n*(yt^2),
+            start=list(a=0,b=0.5,n=10000),
+            data=apv)
+summary(fit1)
+
+#r2  
+r2<-1-(sum(residuals(fit1)^2)/sum((fit1$m$lhs()-mean(fit1$m$lhs()))^2))
+r2
+```
+
+```{r}
+ggplot(data=apv, aes(x=t)) +
+  geom_point(aes(y=y))+ 
+  geom_line(aes(y=predict(fit1))) +
+  ggtitle("Bass Model on Sales Data")
+```
+
+
+# Example 4 (Pulses)
+
+```{r}
+pakinstan<-read.table('/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r7/pakinstan.dat',header=TRUE)
+
+head(pakinstan)
+```
+
+## EDA
+
+```{r}
+#time series plot
+p1 <- ggplot(data=pakinstan,aes(x=year)) +
+  geom_line(aes(y=gram)) + 
+  geom_point(aes(y=gram))
+
+p2 <- ggplot(data=pakinstan,aes(x=year,y=mung)) +
+  geom_line() + 
+  geom_point()
+
+p1 + p2
+```
+
+## Modelling
+
+### Exponential Smoothing
+
+```{r}
+#holt() exponential smoothing forecasts
+#y= input time series
+#h= no of ahead forecasts
+#init= initial state(s) estimation method
+#   "simple" initial states is not optimized
+#beta=FALSE, simple exponential smoothing
+fit<-holt(y=pakinstan$gram, h=6, initial="simple",
+          beta=FALSE)
+summary(fit)
+
+```
+
+```{r}
+#fit$model$SSE, SSE
+#fit$x, input time series
+r2<-1-fit$model$SSE/sum((fit$x-mean(fit$x))^2)
+r2
+fit$model$states
+```
+
+```{r}
+plot(fit)
+```
+
+
+* alpha close to 1, implies current values contributes a lot to predict future
+* Lt depends heavily on Yt
+
+### Holt's Linear Exponential Smoothing
+
+```{r}
+#Holt's linear exponential smoothing
+#beta=NULL (by default), linear exponential smoothing
+fit<-holt(y=pakinstan$gram, h=6, initial="simple",beta=NULL)
+summary(fit)
+
+```
+
+
+```{r}
+plot(fit)
+r2<-1-fit$model$SSE/sum((fit$x-mean(fit$x))^2)
+r2
+fit$model$states
+```
+
+* Beta is close to 0, implying a smooth trend
+
+
+### Exponential Smoothing (Mung)
+
+```{r}
+#simple exponential smoothing
+fit<-holt(y=pakinstan$mung, h=6, initial="simple",beta=FALSE)
+summary(fit)
+r2<-1-fit$model$SSE/sum((fit$x-mean(fit$x))^2)
+r2
+fit$model$states
+
+```
+
+```{r}
+plot(fit)
+```
+
+
+### Holt's Linear Exponential Smoothing (Mung)
+
+
+```{r}
+
+#Holt's linear exponential smoothing
+fit<-holt(pakinstan$mung, h=6, initial="simple",beta=NULL)
+summary(fit)
+r2<-1-fit$model$SSE/sum((fit$x-mean(fit$x))^2)
+r2
+plot(fit)
+fit$model$states
+```
+
+* 6 years forecasted price tend to rise
+
+
+# Example 5 (Load Forecast)
+
+```{r}
+power<-read.csv('/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r7/power.csv',header=TRUE)
+#convert date into a date value
+power$date<-as.Date(power$date,"%d%b%Y")
+
+head(power)
+```
+
+
+## EDA
+
+```{r}
+#series plot
+ggplot(data=power,aes(x=date,y=demand))+
+  geom_line()+
+  geom_point()
+```
+
+## Pre-processing
+
+* `hw()` function only takes in a time series `ts` object
+* Need to convert it
+
+```{r}
+#ts() create a time series
+#frequency= no. of observations in a season/period
+#start= starting year and month
+ts.power<-ts(data=power[1:168,"demand"],frequency=12,start=c(2002,1))
+
+ts.power
+```
+
+
+## Modelling
+
+### Holt-Winters Additive 
+
+```{r}
+#Holt-Winters additive model
+#hw() Holt-Winters linear exponential smoothing with seasonal effects
+#seasonal="add", additive model
+fit<-hw(y=ts.power,seasonal="add",h=24,initial="simple")
+summary(fit)
+r2<-1-fit$model$SSE/sum((fit$x-mean(fit$x))^2)
+r2
+fit$model$states[169,]
+
+
+```
+
+```{r}
+plot(fit)
+
+forecast(fit)
+
+# point forecast
+forecast(fit)$mean
+```
+
+### Holt-Winters Multiplicative Model
+
+```{r}
+#Holt-Winters multiplicative model
+#seasonal="mul", multiplicative model
+fit<-hw(ts.power,seasonal="mul",h=24,initial="simple")
+summary(fit)
+r2<-1-fit$model$SSE/sum((fit$x-mean(fit$x))^2)
+r2
+round(fit$model$states[169,],digits=2)
+```
+
+```{r}
+plot(fit)
+
+forecast(fit)
+forecast(fit)$mean
+```
+
+
+# Example 10 (Marketing Mix Modelling)
+
+* Find the optimal salespeople allocation to maximize profit
+* If total salespeople is restricted to 80, find the optimal allocation
+
+```{r}
+#load R data sets
+load(file="/Users/jasonchan/MSTAT/STAT8019_Marketing_Analytics/lecture notes/r7/eg10.RData")
+head(product)
+
+```
+
+## Normalization
+
+```{r}
+#normalization
+product$nsalesforcea<-product$salesforcea/24
+product$na<-product$salesa/37200
+product$nsalesforceb<-product$salesforceb/27
+product$nb<-product$salesb/38200
+```
+
+
+## EDA
+
+```{r}
+ggplot(data=product)+
+  geom_line(aes(x=nsalesforcea,y=na,color="A"))+
+  geom_point(aes(x=nsalesforcea,y=na),color="red")+
+  geom_line(aes(x=nsalesforceb,y=nb,color="B"))+
+  geom_point(aes(x=nsalesforceb,y=nb),color="blue") +
+  labs(x="norm. salesforce",y="norm. sales") +
+  scale_color_manual(labels = c("A", "B"), values = c("red", "blue")) +
+  theme(legend.position = "right")+
+  theme(legend.title = element_blank())
+```
+
+
+## Modelling
+
+* Fit 2 separate ADBUDG model for product A and B
+
+### Product A
+```{r}
+#product A
+fita <- nls(f=na~a+b*nsalesforcea^c/(nsalesforcea^c+d),data=product,
+            start=list(a=0.4,b=1,c=2.6,d=0.9))
+summary(fita)
+r2<-1-sum(residuals(fita)^2)/sum((fita$m$lhs()-mean(fita$m$lhs()))^2)
+r2
+```
+
+### Product B
+
+```{r}
+#product B
+fitb <- nls(f=nb~a+b*nsalesforceb^c/(nsalesforceb^c+d),data=product,
+            start=list(a=0.1,b=1,c=2.9,d=0.4))
+summary(fitb)
+r2<-1-sum(residuals(fitb)^2)/sum((fitb$m$lhs()-mean(fitb$m$lhs()))^2)
+r2
+```
+
+```{r}
+ggplot(data=product)+
+  geom_line(aes(x=nsalesforcea,y=predict(fita),color="A"))+
+  geom_point(aes(x=nsalesforcea,y=na),color="red")+
+  geom_line(aes(x=nsalesforceb,y=predict(fitb),color="B"))+
+  geom_point(aes(x=nsalesforceb,y=nb),color="blue") +
+  labs(x="norm. salesforce",y="pred. norm. sales") +
+  scale_color_manual(labels = c("A", "B"), values = c("red", "blue")) +
+  theme(legend.position = "right")+
+  theme(legend.title = element_blank())
+
+```
+
+## Optimization
+
+### Without Constraint 
+
+```{r}
+#objective function
+#multiple parameters
+#nsf is a vector
+#nsf[1] is the first parameter
+#nsf[2] is the second parameter
+#...
+net<-function(nsf) {
+  nd<-data.frame(nsalesforcea=nsf[1])
+  nsalesa<-predict(fita,nd)
+  margina<-0.72
+  salesa<-nsalesa*37200
+  # reverse normalization
+  sfa<-nsf[1]*24
+  costa<-sfa*63
+  grossa<-margina*salesa
+  neta<-grossa-costa
+
+  nd<-data.frame(nsalesforceb=nsf[2])
+  nsalesb<-predict(fitb,nd)
+  marginb<-0.62
+  salesb<-nsalesb*38200
+  # reverse normalization
+  sfb<-nsf[2]*27
+  costb<-sfb*63
+  grossb<-marginb*salesb
+  netb<-grossb-costb
+
+  net=neta+netb
+  
+#print(cbind(nsalesa,salesa,nsalesb,salesb,sfa,sfb,grossa,grossb,neta,netb,net))
+  return(net)
+}
+net(c(3,2))
+#optim() General-purpose Optimization
+#        optimization with multiple parameters
+#fn= objective function
+#par= initial estimates
+#control=list(fnscale=-1)  maximization
+op<-optim(par=c(3,2),fn=net,control=list(fnscale=-1))
+op
+
+net(op$par)
+```
+
+### With Constraint
+
+
+```{r}
+#constrOptim() linearly constrained optimization
+#theta= initial estimates
+#f= objective function
+#ui= constrain matrix
+#ci= constrain vector
+#    ui*beta-ci >= 0
+#    80>=24*nsfa+27*nsfb
+#    <=>
+#    -24*nsfa-27*nsfb+80>=0
+#grad=NULL gradient function not provided
+op<-constrOptim(theta=c(1,1),f=net,
+                control=list(fnscale=-1),
+                ui=c(-24,-27),ci=-80,grad=NULL)
+op
+
+net(op$par)
+```
+
+### Plot
+
+```{r}
+net<-function(nsf) {
+  nd<-data.frame(nsalesforcea=nsf[1])
+  nsalesa<-predict(fita,nd)
+  margina<-0.72
+  salesa<-nsalesa*37200
+  sfa<-nsf[1]*24
+  costa<-sfa*63
+  grossa<-margina*salesa
+  neta<-grossa-costa
+  
+  nd<-data.frame(nsalesforceb=nsf[2])
+  nsalesb<-predict(fitb,nd)
+  marginb<-0.62
+  salesb<-nsalesb*38200
+  sfb<-nsf[2]*27
+  costb<-sfb*63
+  grossb<-marginb*salesb
+  netb<-grossb-costb
+  
+  net=neta+netb
+  
+  #print(cbind(nsalesa,salesa,nsalesb,salesb,sfa,sfb,grossa,grossb,neta,netb,net))
+  return(net)
+}
+
+
+profile<-data.frame(matrix(rep(0,3*7*7),byrow=T,nrow=7*7))
+colnames(profile)<-c("nsalesforcea","nsalesforceb","net")
+for (i in 0:6) {
+  for (j in 0:6) {
+    profile[i*7+j+1,1:2]<-cbind(i/2,j/2)
+    profile[i*7+j+1,3]<-net(profile[i*7+j+1,1:2])
+  }
+}
+profile$nsalesforcea<-factor(profile$nsalesforcea)
+ggplot(data=profile)+
+  geom_line(aes(x=nsalesforceb,y=net,group=nsalesforcea,colour=nsalesforcea))+
+  labs(x="norm. salesforce B",y="net profit",colour="norm. sf A") +
+    theme(legend.position="right" ) 
+
+```
+
+
